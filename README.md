@@ -75,7 +75,7 @@ The array must be 2D `float32` or `float64`. Opening errors and dtype or shape m
 
 ## Demo
 
-From this repository, with Node.js 22.12 or newer:
+From this repository, with Node.js 18.x, 20.x, or 22 and newer, and npm 9 or newer:
 
 ```bash
 npm install
@@ -91,7 +91,7 @@ npm test
 npm run build
 ```
 
-The published package is ESM plus TypeScript declarations (`dist`). Development uses TypeScript 5.9 because TypeScript 7 does not expose the compiler API that `tsup` needs to emit `.d.ts` files. GitHub Actions runs tests, the library build, and the demo build on Node 22.
+The published package is ESM plus TypeScript declarations (`dist`). Development uses TypeScript 5.9 because TypeScript 7 does not expose the compiler API that `tsup` needs to emit `.d.ts` files. GitHub Actions runs tests, the library build, and the demo build on Node 18.
 
 ## Limitations
 

@@ -77,7 +77,7 @@ import { ReactLeafletZarrGridLayer } from "react-leaflet-zarr-large-grid";
 
 ## Демо
 
-Из этого репозитория, Node.js 22.12 или новее:
+Из этого репозитория, Node.js 18.x, 20.x или 22 и новее, и npm 9 или новее:
 
 ```bash
 npm install
@@ -93,7 +93,7 @@ npm test
 npm run build
 ```
 
-Публикуемый пакет — ESM и декларации TypeScript (`dist`). В разработке стоит TypeScript 5.9: TypeScript 7 не отдаёт API компилятора, без которого `tsup` не собирает `.d.ts`. GitHub Actions на Node 22 запускает тесты, сборку библиотеки и сборку демо.
+Публикуемый пакет — ESM и декларации TypeScript (`dist`). В разработке стоит TypeScript 5.9: TypeScript 7 не отдаёт API компилятора, без которого `tsup` не собирает `.d.ts`. GitHub Actions на Node 18 запускает тесты, сборку библиотеки и сборку демо.
 
 ## Ограничения
 
