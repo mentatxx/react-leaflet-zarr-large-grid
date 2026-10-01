@@ -17,15 +17,17 @@ export interface YieldField {
 
 export async function createYieldField(): Promise<YieldField> {
   const cellSize = { width: CELL_METERS, height: CELL_METERS };
-  const roughSouth = NORTH - (ROWS * CELL_METERS) / 111_320;
-  const bounds = gridFootprint(
-    createGridFrame({
-      bounds: { west: WEST, south: roughSouth, east: WEST, north: NORTH },
-      cellSize,
-      rows: ROWS,
-      cols: COLS,
-    }),
-  );
+  let bounds = { west: WEST, south: NORTH - 0.02, east: WEST, north: NORTH };
+  for (let step = 0; step < 3; step += 1) {
+    bounds = gridFootprint(
+      createGridFrame({
+        bounds,
+        cellSize,
+        rows: ROWS,
+        cols: COLS,
+      }),
+    );
+  }
   const location = zarr.root();
   const array = await zarr.create(location.resolve("yield"), {
     shape: [ROWS, COLS],

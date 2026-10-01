@@ -6,16 +6,10 @@ import {
   type LatLngBounds,
 } from "leaflet";
 import { ChunkCache, readWindow } from "./chunks.js";
-import {
-  cellWindow,
-  createGridFrame,
-  footprintDriftMeters,
-  METERS_PER_DEGREE_LAT,
-  type GridFrame,
-} from "./geo.js";
+import { cellWindow, createGridFrame, footprintDriftMeters, type GridFrame } from "./geo.js";
 import { openFloatArray, type FloatZarrArray } from "./openArray.js";
 import { paintTile } from "./paint.js";
-import type { LngLatBounds, PixelSampling, ZarrGridLayerProps } from "./types.js";
+import type { LngLatBounds, PixelSampling, RowOrigin, ZarrGridLayerProps } from "./types.js";
 
 type GridLayerInternals = {
   _tileCoordsToBounds(coords: Coords): LatLngBounds;
@@ -65,6 +59,8 @@ export class ZarrGridLayer extends GridLayer {
       next.bounds !== prev.bounds ||
       next.cellSize !== prev.cellSize ||
       next.palette !== prev.palette ||
+      (next.placement ?? "projected") !== (prev.placement ?? "projected") ||
+      next.rowOrigin !== prev.rowOrigin ||
       (next.pixelSampling ?? "nearest") !== (prev.pixelSampling ?? "nearest") ||
       next.keepBuffer !== prev.keepBuffer
     ) {
@@ -138,6 +134,8 @@ export class ZarrGridLayer extends GridLayer {
       cellSize,
       rows: array.shape[0] ?? 0,
       cols: array.shape[1] ?? 0,
+      placement: this.#props.placement,
+      rowOrigin: resolveRowOrigin(this.#props.rowOrigin),
     });
     this.#warnBounds(declared, frame);
     const leafletBounds = tileBounds(this, coords);
@@ -170,16 +168,25 @@ export class ZarrGridLayer extends GridLayer {
   }
 
   #warnBounds(declared: LngLatBounds, frame: GridFrame): void {
-    if (this.#boundsWarned) return;
+    if (this.#boundsWarned || frame.kind === "geographic") return;
     const drift = footprintDriftMeters(declared, frame);
-    const cellWidth = frame.cellWidthDeg * frame.metersPerDegLng;
-    const cellHeight = frame.cellHeightDeg * METERS_PER_DEGREE_LAT;
+    const cellWidth = frame.cellWidth * frame.groundScale;
+    const cellHeight = frame.cellHeight * frame.groundScale;
     if (Math.abs(drift.east) <= cellWidth && Math.abs(drift.south) <= cellHeight) return;
     this.#boundsWarned = true;
+    const anchor =
+      frame.rowOrigin === "south"
+        ? "Cell edges follow the EPSG:3857 origin. The array starts at the snapped south-west corner."
+        : "Cell edges follow the north-west corner and the cell size in meters.";
     console.warn(
-      `Zarr grid bounds differ from cell size times shape by ${drift.east.toFixed(1)} m east and ${drift.south.toFixed(1)} m south. Cell edges follow the north-west corner and the cell size in meters.`,
+      `Zarr grid bounds differ from cell size times shape by ${drift.east.toFixed(1)} m east and ${drift.south.toFixed(1)} m south. ${anchor}`,
     );
   }
+}
+
+function resolveRowOrigin(value: ZarrGridLayerProps["rowOrigin"]): RowOrigin {
+  if (typeof value === "function") return value();
+  return value ?? "north";
 }
 
 function tileKey(coords: Coords): string {

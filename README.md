@@ -33,22 +33,28 @@ import { ReactLeafletZarrGridLayer } from "react-leaflet-zarr-large-grid";
 
 `bounds` and `cellSize` are getters for the current values. The layer calls them while drawing a tile. Memoize them with `useCallback` when the values are stable: a new function identity redraws every tile. They are not functions of zoom.
 
+`rowOrigin` is `"north"` or `"south"`, or a getter that returns one of those. The default is `"north"`: row 0 touches the north edge. A getter is called while drawing a tile, and a new function identity redraws every tile.
+
 `palette(value)` returns `#rrggbb`. Range breaks stay in your function. `NaN` and the array `fill_value` are not passed to the palette and stay transparent. Any other string is drawn as transparent.
 
 ## Coordinates
 
-Values are a regular grid. Axis 0 runs north to south, axis 1 runs west to east. Cell `(0, 0)` touches the north-west corner of `bounds`.
+`placement` chooses how array indices become cells. The default is `projected`. The grid does not rotate, and it should not cross the antimeridian. Web Mercator (EPSG:3857) uses a sphere of radius 6 378 137 m, the same projection Leaflet uses for the map. A ground length `G` becomes `G / cos(φ)` projected meters, where `φ` is the latitude of the bounds center.
 
-`bounds` is a WGS84 rectangle in degrees. `cellSize.width` is the east-west size of one cell in meters, `cellSize.height` is the north-south size in meters. Degrees are converted with an equirectangular scale at the latitude of the bounds center (`111320` meters per degree of latitude). That is accurate for a field and is not a continental projection. The grid is axis-aligned: it does not rotate, and it should not cross the antimeridian.
+`projected` keeps a constant cell size on the map. Axis 1 runs west to east. With the default `rowOrigin` of `"north"`, axis 0 runs north to south and cell `(0, 0)` touches the north-west corner of `bounds`. `"south"` anchors that cell at the south-west corner and grows rows northward. Edges are stepped from the anchor by `cellSize` and are not stretched to the opposite corner. If that corner disagrees with `rows * height` and `cols * width` by more than one cell, the layer logs one warning.
 
-Cell edges are measured from the north-west corner by `cellSize`, not stretched to the south-east corner. If that corner disagrees with `rows * height` and `cols * width` by more than one cell, the layer logs one warning.
+`geographic` divides `bounds` into equal steps of longitude and latitude, one step per column and row. The east and north edges land on `bounds`. Column 0 is the west column. Row 0 is the north row unless `rowOrigin` is `"south"`, which matches a Zarr grid stored for `grid-builder`. `cellSize` is not used to place cells.
+
+`aligned` builds squares in EPSG:3857 and snaps them to the projection origin, the same lattice `grid-builder` uses for a polygon. `cellSize` is the ground side, converted with `1 / cos(φ)`. Lines that already lie on the lattice stay put. With `"north"` the array starts at the snapped north-west corner and row 0 is the northern row. `"south"` snaps the south-west corner and row 0 is the southern row. If `rows` and `cols` do not reach the snapped far corner within one cell, the layer logs one warning.
 
 ## Sampling
+
+A tile pixel is a rectangle in EPSG:3857. Latitude is not interpolated linearly across the tile.
 
 `pixelSampling` controls a pixel that covers more than one cell:
 
 - `nearest` (default) reads the cell under the pixel center. One sample per pixel.
-- `average` uses the mean of the finite cells the pixel covers, then calls the palette once.
+- `average` uses the mean of the finite cells whose projected rectangles meet the pixel, then calls the palette once.
 
 Decoded chunks are kept in an LRU cache (`chunkCacheSize`, default 128) shared by every tile, including the `keepBuffer` ring (default 2). Leaving the map aborts a tile render. A chunk download is cancelled only when no remaining tile still needs it.
 
@@ -61,6 +67,8 @@ Decoded chunks are kept in an LRU cache (`chunkCacheSize`, default 128) shared b
 | `bounds` | `() => { west, south, east, north }` | required |
 | `cellSize` | `() => { width, height }` meters | required |
 | `palette` | `(value: number) => string` | required |
+| `placement` | `"projected"`, `"geographic"`, or `"aligned"` | `"projected"` |
+| `rowOrigin` | `"north"`, `"south"`, or `() =>` one of those | `"north"` |
 | `pixelSampling` | `"nearest"` or `"average"` | `"nearest"` |
 | `keepBuffer` | `number` | `2` |
 | `opacity` | `number` | Leaflet default |
@@ -71,7 +79,7 @@ Decoded chunks are kept in an LRU cache (`chunkCacheSize`, default 128) shared b
 
 The array must be 2D `float32` or `float64`. Opening errors and dtype or shape mismatches are reported through `onError`. A tile that fails to read calls Leaflet's tile `done(error)` so the map can retry it.
 
-`ZarrGridLayer` is also exported for use without the React wrapper. `createGridFrame` and `gridFootprint` build a rectangle that matches the meter grid, which is what the demo uses.
+`ZarrGridLayer` is also exported for use without the React wrapper. `createGridFrame` and `gridFootprint` build the rectangle for a placement. Pass the same `placement` the layer uses. The demo builds its `projected` rectangle that way.
 
 ## Demo
 
@@ -82,7 +90,7 @@ npm install
 npm run demo
 ```
 
-The demo builds a sine wave in an in-memory Zarr store and paints it with a static rainbow palette. The panel switches `pixelSampling`.
+The demo builds a sine wave in an in-memory Zarr store and paints it with a static rainbow palette. The panel switches `pixelSampling`, `placement`, and `rowOrigin`.
 
 ## Development
 
