@@ -34,6 +34,14 @@ export type RowOrigin = "north" | "south";
  *   ignored. Row 0 is the north row unless `rowOrigin` is `"south"`. Suitable
  *   for climate/atmospheric data (GFS, ERA5, etc.) stored on a regular degree grid.
  *
+ * - `"cover"` — the same degree steps as `"geographic"`, but each cell is the
+ *   EPSG:3857 rectangle of its own corners, the way grid-builder covers a Zarr
+ *   grid. Longitude steps stay equal in projected X. Latitude steps do not:
+ *   projected row height is the Mercator distance between the two latitudes and
+ *   grows toward the pole. The last column and the last latitude band end on
+ *   `bounds`. `cellSize` is not used to place cells. Row 0 follows `rowOrigin`;
+ *   `"south"` matches a Zarr grid stored with `y_axis: south_to_north`.
+ *
  * - `"aligned"` — like `"projected"`, but the origin is snapped to the cell
  *   grid so neighboring extents stay on one lattice. With `"north"` (the
  *   default) the north-west corner is snapped outward and rows grow downward.
@@ -42,7 +50,7 @@ export type RowOrigin = "north" | "south";
  *   datasets) on a shared grid without drift, even if their bounds differ
  *   slightly.
  */
-export type GridPlacement = "projected" | "geographic" | "aligned";
+export type GridPlacement = "projected" | "geographic" | "aligned" | "cover";
 
 export interface ZarrReadableStore {
   get(

@@ -46,7 +46,27 @@ export interface GeographicGridFrame {
   cols: number;
 }
 
-export type GridFrame = UniformGridFrame | GeographicGridFrame;
+/**
+ * Equal longitude and latitude steps, each cell stored as its EPSG:3857 box.
+ * Matches grid-builder's Zarr cover: projected row height grows toward the pole.
+ */
+export interface CoverGridFrame {
+  kind: "cover";
+  /** `north`: row 0 touches the north edge. `south`: row 0 touches the south edge. */
+  rowOrigin: RowOrigin;
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  rows: number;
+  cols: number;
+  /** Column edges in EPSG:3857 meters, west to east. Length is `cols + 1`. */
+  xEdges: Float64Array;
+  /** Latitude-band edges in EPSG:3857 meters, south to north. Length is `rows + 1`. */
+  yEdges: Float64Array;
+}
+
+export type GridFrame = UniformGridFrame | GeographicGridFrame | CoverGridFrame;
 
 export interface IndexWindow {
   rowStart: number;
@@ -78,11 +98,12 @@ export function createGridFrame(spec: GridSpec): GridFrame {
   const placement = spec.placement ?? "projected";
   if (placement === "geographic") return geographicFrame(spec);
   if (placement === "aligned") return alignedFrame(spec);
+  if (placement === "cover") return coverFrame(spec);
   return projectedFrame(spec);
 }
 
 export function gridFootprint(frame: GridFrame): LngLatBounds {
-  if (frame.kind === "geographic") {
+  if (frame.kind !== "uniform") {
     return { west: frame.west, south: frame.south, east: frame.east, north: frame.north };
   }
   const southY = frame.rowOrigin === "north" ? frame.originY - frame.rows * frame.cellHeight : frame.originY;
@@ -119,6 +140,7 @@ export function cellIndex(
 ): { row: number; col: number } | null {
   if (frame.kind === "geographic") return geographicIndex(frame, lng, lat);
   const point = toMercator(lng, lat);
+  if (frame.kind === "cover") return cellIndexCover(frame, point.x, point.y);
   return cellIndexProjected(frame, point.x, point.y);
 }
 
@@ -140,8 +162,22 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function cellIndexCover(
+  frame: CoverGridFrame,
+  x: number,
+  y: number,
+): { row: number; col: number } | null {
+  const col = cellAt(frame.xEdges, x);
+  const band = cellAt(frame.yEdges, y);
+  if (col === null || band === null) return null;
+  const row = frame.rowOrigin === "south" ? band : frame.rows - 1 - band;
+  if (row < 0 || row >= frame.rows) return null;
+  return { row, col };
+}
+
 export function cellWindow(frame: GridFrame, view: LngLatBounds): IndexWindow | null {
   if (frame.kind === "geographic") return geographicWindow(frame, view);
+  if (frame.kind === "cover") return coverWindow(frame, view);
   const west = toMercator(view.west, 0).x;
   let east = toMercator(view.east, 0).x;
   if (east < west) east += WORLD_WIDTH_M;
@@ -197,6 +233,41 @@ function alignedFrame(spec: GridSpec): UniformGridFrame {
     cellHeight,
     groundScale,
   };
+}
+
+/**
+ * Equal degree steps with each corner projected to EPSG:3857, matching
+ * grid-builder's Zarr cover. The far edge of the last column and the last
+ * latitude band is the bound itself. cellSize is not used.
+ */
+function coverFrame(spec: GridSpec): CoverGridFrame {
+  const { west, south, east, north } = spec.bounds;
+  const { rows, cols } = spec;
+  const xEdges = degreeEdges(cols, west, east, (lon) => toMercator(lon, 0).x);
+  const yEdges = degreeEdges(rows, south, north, (lat) => toMercator(0, lat).y);
+  return {
+    kind: "cover",
+    rowOrigin: spec.rowOrigin ?? "north",
+    west,
+    south,
+    east,
+    north,
+    rows,
+    cols,
+    xEdges,
+    yEdges,
+  };
+}
+
+function degreeEdges(count: number, start: number, end: number, project: (value: number) => number): Float64Array {
+  const edges = new Float64Array(Math.max(count, 0) + 1);
+  if (count <= 0) return edges;
+  const span = end - start;
+  for (let index = 0; index < count; index += 1) {
+    edges[index] = project(start + (index * span) / count);
+  }
+  edges[count] = project(end);
+  return edges;
 }
 
 /** Grid splits bounds evenly in degrees (WGS84), no projection; cellSize in meters is not used. */
@@ -273,6 +344,68 @@ function geographicWindowRows(
     rowStart: Math.floor((frame.north - viewNorth) / rowSpan),
     rowEnd: Math.ceil((frame.north - viewSouth) / rowSpan),
   };
+}
+
+function coverWindow(frame: CoverGridFrame, view: LngLatBounds): IndexWindow | null {
+  if (frame.cols <= 0 || frame.rows <= 0) return null;
+  const west = toMercator(view.west, 0).x;
+  let east = toMercator(view.east, 0).x;
+  if (east < west) east += WORLD_WIDTH_M;
+  const yNorth = toMercator(0, view.north).y;
+  const ySouth = toMercator(0, view.south).y;
+  const cols = edgeRange(frame.xEdges, west, east);
+  const bands = edgeRange(frame.yEdges, ySouth, yNorth);
+  if (!cols || !bands) return null;
+  const rows =
+    frame.rowOrigin === "south"
+      ? { rowStart: bands.start, rowEnd: bands.end }
+      : { rowStart: frame.rows - bands.end, rowEnd: frame.rows - bands.start };
+  const colStart = clamp(cols.start, 0, frame.cols);
+  const colEnd = clamp(cols.end, 0, frame.cols);
+  const rowStart = clamp(rows.rowStart, 0, frame.rows);
+  const rowEnd = clamp(rows.rowEnd, 0, frame.rows);
+  if (colStart >= colEnd || rowStart >= rowEnd) return null;
+  return { rowStart, rowEnd, colStart, colEnd };
+}
+
+/** Index of the cell that contains `value`. The last edge belongs to the last cell. */
+function cellAt(edges: Float64Array, value: number): number | null {
+  const last = edges.length - 1;
+  if (last <= 0 || !(edges[last] > edges[0])) return null;
+  if (value < edges[0] || value > edges[last]) return null;
+  if (value === edges[last]) return last - 1;
+  let lo = 0;
+  let hi = last - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (edges[mid] <= value) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/**
+ * Half-open overlap of [min, max) with the cells between `edges`.
+ * A cell that only touches `max` is excluded. A cell that touches `min` is included.
+ */
+function edgeRange(edges: Float64Array, min: number, max: number): { start: number; end: number } | null {
+  const last = edges.length - 1;
+  if (last <= 0 || !(max > min) || max <= edges[0] || min >= edges[last]) return null;
+  const start = min <= edges[0] ? 0 : cellAt(edges, min);
+  if (start === null) return null;
+  if (max >= edges[last]) return { start, end: last };
+  const atMax = cellAt(edges, max);
+  if (atMax === null) return null;
+  const end = edges[atMax] === max ? atMax : atMax + 1;
+  if (start >= end) return null;
+  return { start, end };
+}
+
+/** Cells whose projected boxes meet [min, max). The far edge is nudged so a shared boundary counts once. */
+export function coverOverlap(edges: Float64Array, min: number, max: number): { lo: number; hi: number } {
+  const range = edgeRange(edges, min, max - 1e-9);
+  if (!range) return { lo: 0, hi: -1 };
+  return { lo: range.start, hi: range.end - 1 };
 }
 
 function rowStartAt(frame: UniformGridFrame, ySouth: number, yNorth: number): number {

@@ -1,10 +1,13 @@
 import { parseHexColor } from "./color.js";
 import {
   cellIndex,
+  cellIndexCover,
   cellIndexProjected,
+  coverOverlap,
   fromMercator,
   toMercator,
   EARTH_RADIUS_M,
+  type CoverGridFrame,
   type GridFrame,
   type IndexWindow,
   type UniformGridFrame,
@@ -88,6 +91,11 @@ function nearestCell(
     if (!index) return Number.NaN;
     return valueAt(index.row, index.col);
   }
+  if (frame.kind === "cover") {
+    const index = cellIndexCover(frame, x, y);
+    if (!index) return Number.NaN;
+    return valueAt(index.row, index.col);
+  }
   const index = cellIndexProjected(frame, x, y);
   if (!index) return Number.NaN;
   return valueAt(index.row, index.col);
@@ -104,7 +112,9 @@ function averageCells(
   const covered =
     frame.kind === "geographic"
       ? geographicCoverage(frame, xWest, xEast, ySouth, yNorth)
-      : uniformCoverage(frame, xWest, xEast, ySouth, yNorth);
+      : frame.kind === "cover"
+        ? coverCoverage(frame, xWest, xEast, ySouth, yNorth)
+        : uniformCoverage(frame, xWest, xEast, ySouth, yNorth);
   let sum = 0;
   let count = 0;
   for (let row = covered.rowLo; row <= covered.rowHi; row += 1) {
@@ -141,6 +151,26 @@ function uniformCoverage(
     colHi,
     rowLo: Math.floor((frame.originY - yNorth) / frame.cellHeight),
     rowHi: Math.ceil((frame.originY - ySouth) / frame.cellHeight - 1e-9) - 1,
+  };
+}
+
+function coverCoverage(
+  frame: CoverGridFrame,
+  xWest: number,
+  xEast: number,
+  ySouth: number,
+  yNorth: number,
+): { rowLo: number; rowHi: number; colLo: number; colHi: number } {
+  const cols = coverOverlap(frame.xEdges, xWest, xEast);
+  const bands = coverOverlap(frame.yEdges, ySouth, yNorth);
+  if (frame.rowOrigin === "south") {
+    return { colLo: cols.lo, colHi: cols.hi, rowLo: bands.lo, rowHi: bands.hi };
+  }
+  return {
+    colLo: cols.lo,
+    colHi: cols.hi,
+    rowLo: frame.rows - 1 - bands.hi,
+    rowHi: frame.rows - 1 - bands.lo,
   };
 }
 

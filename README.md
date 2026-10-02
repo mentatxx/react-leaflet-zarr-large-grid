@@ -43,7 +43,9 @@ import { ReactLeafletZarrGridLayer } from "react-leaflet-zarr-large-grid";
 
 `projected` keeps a constant cell size on the map. Axis 1 runs west to east. With the default `rowOrigin` of `"north"`, axis 0 runs north to south and cell `(0, 0)` touches the north-west corner of `bounds`. `"south"` anchors that cell at the south-west corner and grows rows northward. Edges are stepped from the anchor by `cellSize` and are not stretched to the opposite corner. If that corner disagrees with `rows * height` and `cols * width` by more than one cell, the layer logs one warning.
 
-`geographic` divides `bounds` into equal steps of longitude and latitude, one step per column and row. The east and north edges land on `bounds`. Column 0 is the west column. Row 0 is the north row unless `rowOrigin` is `"south"`, which matches a Zarr grid stored for `grid-builder`. `cellSize` is not used to place cells.
+`geographic` divides `bounds` into equal steps of longitude and latitude, one step per column and row. The east and north edges land on `bounds`. Column 0 is the west column. Row 0 is the north row unless `rowOrigin` is `"south"`. `cellSize` is not used to place cells.
+
+`cover` uses those same degree steps and places each cell as the EPSG:3857 rectangle of its own corners, the way `grid-builder` covers a Zarr grid. A longitude step keeps a constant projected width. A latitude step does not: the row height is the Mercator distance between its latitudes and grows toward the pole. The last column and the last latitude band end exactly on `bounds`. `cellSize` is not used to place cells. `rowOrigin: "south"` matches the `south_to_north` axis `grid-builder` stores in Zarr.
 
 `aligned` builds squares in EPSG:3857 and snaps them to the projection origin, the same lattice `grid-builder` uses for a polygon. `cellSize` is the ground side, converted with `1 / cos(φ)`. Lines that already lie on the lattice stay put. With `"north"` the array starts at the snapped north-west corner and row 0 is the northern row. `"south"` snaps the south-west corner and row 0 is the southern row. If `rows` and `cols` do not reach the snapped far corner within one cell, the layer logs one warning.
 
@@ -67,7 +69,7 @@ Decoded chunks are kept in an LRU cache (`chunkCacheSize`, default 128) shared b
 | `bounds` | `() => { west, south, east, north }` | required |
 | `cellSize` | `() => { width, height }` meters | required |
 | `palette` | `(value: number) => string` | required |
-| `placement` | `"projected"`, `"geographic"`, or `"aligned"` | `"projected"` |
+| `placement` | `"projected"`, `"geographic"`, `"aligned"`, or `"cover"` | `"projected"` |
 | `rowOrigin` | `"north"`, `"south"`, or `() =>` one of those | `"north"` |
 | `pixelSampling` | `"nearest"` or `"average"` | `"nearest"` |
 | `keepBuffer` | `number` | `2` |

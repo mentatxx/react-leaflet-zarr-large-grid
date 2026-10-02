@@ -142,6 +142,37 @@ describe("paintTile", () => {
     expect(pixel(data, 1, 0, 0)).toEqual([0, 0, 255, 255]);
   });
 
+  it("gives the northern cover band more pixels than the southern band", () => {
+    const frame = createGridFrame({
+      bounds: { west: 0, south: 0, east: 1, north: 60 },
+      cellSize: { width: 1, height: 1 },
+      rows: 2,
+      cols: 1,
+      placement: "cover",
+      rowOrigin: "south",
+    });
+    const height = 100;
+    const data = paintTile({
+      width: 1,
+      height,
+      tile: { west: 0, south: 0, east: 1, north: 60 },
+      frame,
+      window: { rowStart: 0, rowEnd: 2, colStart: 0, colEnd: 1 },
+      values: new Float64Array([1, 2]),
+      palette: color,
+      sampling: "nearest",
+    });
+    let southPixels = 0;
+    let northPixels = 0;
+    for (let y = 0; y < height; y += 1) {
+      const sample = pixel(data, 1, 0, y);
+      if (sample[0] === 255) southPixels += 1;
+      if (sample[1] === 255) northPixels += 1;
+    }
+    expect(northPixels).toBeGreaterThan(southPixels);
+    expect(southPixels + northPixels).toBe(height);
+  });
+
   it("averages finite cells covered by a pixel", () => {
     const frame = quadrantFrame();
     const data = paintTile({

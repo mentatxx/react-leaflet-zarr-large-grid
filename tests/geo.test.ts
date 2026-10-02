@@ -209,4 +209,52 @@ describe("grid frame", () => {
       col: 1,
     });
   });
+
+  it("projects each cover cell from its own degree corners", () => {
+    const frame = createGridFrame({
+      bounds: { west: 0, south: 0, east: 1, north: 60 },
+      cellSize: { width: 10, height: 20 },
+      rows: 2,
+      cols: 2,
+      placement: "cover",
+      rowOrigin: "south",
+    });
+    if (frame.kind !== "cover") throw new Error("expected a cover frame");
+    expect(frame.xEdges[0]).toBe(toMercator(0, 0).x);
+    expect(frame.xEdges[1]).toBe(toMercator(0.5, 0).x);
+    expect(frame.xEdges[2]).toBe(toMercator(1, 0).x);
+    expect(frame.yEdges[0]).toBe(toMercator(0, 0).y);
+    expect(frame.yEdges[1]).toBe(toMercator(0, 30).y);
+    expect(frame.yEdges[2]).toBe(toMercator(0, 60).y);
+    expect(frame.yEdges[2] - frame.yEdges[1]).toBeGreaterThan(frame.yEdges[1] - frame.yEdges[0]);
+    expect(gridFootprint(frame)).toEqual({ west: 0, south: 0, east: 1, north: 60 });
+    expect(cellIndex(frame, 0.25, 15)).toEqual({ row: 0, col: 0 });
+    expect(cellIndex(frame, 0.75, 45)).toEqual({ row: 1, col: 1 });
+    expect(cellIndex(frame, 1, 60)).toEqual({ row: 1, col: 1 });
+    expect(cellIndex(frame, -0.01, 15)).toBeNull();
+    expect(cellWindow(frame, { west: 0, south: 0, east: 0.5, north: 30 })).toEqual({
+      rowStart: 0,
+      rowEnd: 1,
+      colStart: 0,
+      colEnd: 1,
+    });
+  });
+
+  it("keeps cover row 0 on the northern latitude band when rowOrigin is north", () => {
+    const frame = createGridFrame({
+      bounds: { west: 0, south: 0, east: 1, north: 60 },
+      cellSize: { width: 1, height: 1 },
+      rows: 2,
+      cols: 1,
+      placement: "cover",
+    });
+    expect(cellIndex(frame, 0.5, 45)).toEqual({ row: 0, col: 0 });
+    expect(cellIndex(frame, 0.5, 15)).toEqual({ row: 1, col: 0 });
+    expect(cellWindow(frame, { west: 0, south: 0, east: 1, north: 30 })).toEqual({
+      rowStart: 1,
+      rowEnd: 2,
+      colStart: 0,
+      colEnd: 1,
+    });
+  });
 });

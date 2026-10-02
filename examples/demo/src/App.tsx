@@ -65,6 +65,15 @@ export function App() {
             />
             Aligned
           </label>
+          <label>
+            <input
+              type="radio"
+              name="placement"
+              checked={placement === "cover"}
+              onChange={() => setPlacement("cover")}
+            />
+            Cover
+          </label>
         </fieldset>
         <fieldset>
           <legend>Row origin</legend>

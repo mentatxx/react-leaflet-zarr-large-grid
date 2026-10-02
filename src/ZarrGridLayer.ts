@@ -168,7 +168,7 @@ export class ZarrGridLayer extends GridLayer {
   }
 
   #warnBounds(declared: LngLatBounds, frame: GridFrame): void {
-    if (this.#boundsWarned || frame.kind === "geographic") return;
+    if (this.#boundsWarned || frame.kind !== "uniform") return;
     const drift = footprintDriftMeters(declared, frame);
     const cellWidth = frame.cellWidth * frame.groundScale;
     const cellHeight = frame.cellHeight * frame.groundScale;
