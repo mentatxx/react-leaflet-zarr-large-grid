@@ -101,7 +101,7 @@ npm test
 npm run build
 ```
 
-The published package is ESM plus TypeScript declarations (`dist`). Development uses TypeScript 5.9 because TypeScript 7 does not expose the compiler API that `tsup` needs to emit `.d.ts` files. GitHub Actions runs tests, the library build, and the demo build on Node 18.
+The published package is ESM plus TypeScript declarations (`dist`). Development uses TypeScript 5.9 because TypeScript 7 does not expose the compiler API that `tsup` needs to emit `.d.ts` files. GitHub Actions runs tests, the library build, and the demo build on Node 22.
 
 ## Limitations
 
